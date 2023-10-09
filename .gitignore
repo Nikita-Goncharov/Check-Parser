@@ -1,5 +1,6 @@
 .idea/
 
 test.py
-black.jpg
+*.jpg
 images/
+data/

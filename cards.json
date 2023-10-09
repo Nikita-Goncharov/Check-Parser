@@ -1,0 +1,39 @@
+//♣️ Трефы — clubs.
+//♦️ Бубны — diamonds.
+//♥️ Червы — hearts.
+//♠️ Пики — spades.
+
+//Ace (Туз)
+//Jack (Валет / Джек)
+//Queen (Дама / Королева(
+//King (Король)
+
+
+{
+  "ace-": [[], []],
+  "king-diamonds": [[], []],
+  "queen-": [[], []],
+  "jack-": [[], []],
+  "ten-diamonds": [[], []],
+
+  "ace-": [[], []],
+  "king-spades": [[], []],
+  "queen-": [[], []],
+  "jack-": [[], []],
+  "ten-": [[], []],
+  "nine-spades": [[], []],
+
+
+  "ace-": [[], []],
+  "king-": [[], []],
+  "queen-": [[], []],
+  "jack-clubs": [[], []],
+  "ten-": [[], []],
+  "seven-clubs": [[], []],
+
+  "ace-hearts": [[], []],
+  "king-": [[], []],
+  "queen-hearts": [[], []],
+  "jack-": [[], []],
+  "ten-": [[], []],
+}
