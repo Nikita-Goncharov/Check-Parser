@@ -2,5 +2,7 @@
 
 test.py
 *.jpg
+
 images/
 data/
+debug_img/
