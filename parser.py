@@ -34,7 +34,7 @@ cards = {
 
 d_numbers = {
   "0": [[0, 25], [0, 30]],
-  "1": [[37, 60], [0, 30]],
+  "1": [[35, 60], [0, 30]],
   "2": [[70, 90], [0, 30]],
   "3": [[100, 125], [0, 30]],
   "4": [[135, 160], [0, 30]],
@@ -87,32 +87,17 @@ class ParseCheck:
             },
 
         }
-        '''
-        if self.prep_ticket_out_brightness != 0:
-            if self.prep_ticket_out_brightness > 0:
-                shadow = self.prep_ticket_out_brightness
-                highlight = 255
-            else:
-                shadow = 0
-                highlight = 255 + self.prep_ticket_out_brightness
-            alpha_b = (highlight - shadow) / 255
-            gamma_b = shadow
+        contrast = 1.1  # 1.3  # Contrast control ( 0 to 127)
+        brightness = .1  # Brightness control (0-100)
 
-            self.pic_crop = cv2.addWeighted(self.pic_crop, alpha_b, self.pic_crop, 0, gamma_b)
-            self.pic_big_gray = cv2.addWeighted(self.pic_big_gray, alpha_b, self.pic_big_gray, 0, gamma_b)
-            self.pic_big_color = cv2.addWeighted(self.pic_big_color, alpha_b, self.pic_big_color, 0, gamma_b)
-
-        if self.prep_ticket_out_contrast != 0:
-            f = 131 * (self.prep_ticket_out_contrast + 127) / (127 * (131 - self.prep_ticket_out_contrast))
-            alpha_c = f
-            gamma_c = 127 * (1 - f)
-
-            self.pic_crop = cv2.addWeighted(self.pic_crop, alpha_c, self.pic_crop, 0, gamma_c)
-            self.pic_big_gray = cv2.addWeighted(self.pic_big_gray, alpha_c, self.pic_big_gray, 0, gamma_c)
-            self.pic_big_color = cv2.addWeighted(self.pic_big_color, alpha_c, self.pic_big_color, 0, gamma_c)
-        '''
-        grayImage = cv2.cvtColor(self.original_img, cv2.COLOR_BGR2GRAY)
-        thresh, self.img = cv2.threshold(grayImage, 127, 255, cv2.THRESH_BINARY)
+        contrasted_img = cv2.addWeighted(self.original_img, contrast, self.original_img, 0, brightness)
+        self._save_debug_img(contrasted_img, 'contrasted.jpg')
+        blured_img = cv2.GaussianBlur(contrasted_img, [5, 5], 0)
+        self._save_debug_img(blured_img, 'contrast_blured.jpg')
+        grayImage = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
+        self._save_debug_img(grayImage, 'contrast_gray.jpg')
+        thresh, self.img = cv2.threshold(grayImage, 170, 255, cv2.THRESH_BINARY)
+        self._save_debug_img(self.img, 'contrasted_black.jpg')
 
     @staticmethod
     def _save_debug_img(img, filename):
@@ -151,15 +136,12 @@ class ParseCheck:
         print("Cards:", self.get_cards())
         print("Spent money:", self.get_spent_money())
         print("Game type:", self.get_game_type())
-        # print(self.qr_code_info)
         return self.check_info
 
     def get_spent_money(self):
-        crop_img = self.img[self.qr_code_info['bottom_right'][1] + 1300:self.qr_code_info['bottom_right'][1] + 1330,
+        crop_img = self.img[self.qr_code_info['bottom_right'][1] + 1300:self.qr_code_info['bottom_right'][1] + 1340,
                             self.qr_code_info['top_left'][0] - 125:self.qr_code_info['top_left'][0] + 75]
-        self._save_debug_img(crop_img, f"cropped_spent_money_bf_blur({self.filename}).jpg")
-        crop_img = cv2.GaussianBlur(crop_img, [3, 3], 0)
-        self._save_debug_img(crop_img, f"cropped_spent_money_af_blur({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"cropped_spent_money({self.filename}).jpg")
         parsed_numbers = self.get_value_from_image(crop_img, 'numbers', parse_just_in_numbers=True)
 
         numbers = ''
@@ -169,12 +151,11 @@ class ParseCheck:
         return int(numbers[0:len(numbers)-2])  # TODO: int or float ???
 
     def get_check_dashed_number(self):
-        crop_img = self.img[self.qr_code_info['bottom_right'][1] + 298:self.qr_code_info['bottom_right'][1] + 328,
+        crop_img = self.img[self.qr_code_info['bottom_right'][1] + 298:self.qr_code_info['bottom_right'][1] + 338,
                             self.qr_code_info['top_left'][0] - 50:self.qr_code_info['top_right'][0] + 50]
-        self._save_debug_img(crop_img, f"cropped_dashed_number_bf_blur({self.filename}).jpg")
-        crop_img = cv2.GaussianBlur(crop_img, (3, 3), 0)
-        self._save_debug_img(crop_img, f"cropped_dashed_number_af_blur({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"cropped_dashed_number({self.filename}).jpg")
         numbers = self.get_value_from_image(crop_img, 'numbers', parse_just_in_numbers=True)
+
         if len(numbers) == 19:
             dashed_number = f"{numbers[:4]}-{numbers[4:13]}-{numbers[13:]}"
             return dashed_number
@@ -182,11 +163,9 @@ class ParseCheck:
             raise Exception(f"The length of the number is not correct(dashed_number)\nNumber: {numbers}")
 
     def get_check_spaced_number(self):
-        crop_img = self.img[self.qr_code_info['bottom_right'][1] + 1398:self.qr_code_info['bottom_right'][1] + 1428,
+        crop_img = self.img[self.qr_code_info['bottom_right'][1] + 1398:self.qr_code_info['bottom_right'][1] + 1438,
                             self.qr_code_info['top_left'][0] - 125:self.qr_code_info['top_right'][0] + 125]
-        self._save_debug_img(crop_img, f"cropped_spaced_number_bf_blur({self.filename}).jpg")
-        crop_img = cv2.GaussianBlur(crop_img, (3, 3), 0)
-        self._save_debug_img(crop_img, f"cropped_spaced_number_af_blur({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"cropped_spaced_number({self.filename}).jpg")
         numbers = self.get_value_from_image(crop_img, 'numbers')
         if len(numbers) == 26:
             spaced_number = f"{numbers[:8]} {numbers[8:17]} {numbers[17:]}"
@@ -202,11 +181,9 @@ class ParseCheck:
         return cards
 
     def get_date(self):
-        crop_img = self.img[self.qr_code_info['bottom_right'][1] + 1115:self.qr_code_info['bottom_right'][1] + 1145,
+        crop_img = self.img[self.qr_code_info['bottom_right'][1] + 1115:self.qr_code_info['bottom_right'][1] + 1155,
                             self.qr_code_info['top_left'][0] - 85:self.qr_code_info['top_left'][0] + 245]
-        self._save_debug_img(crop_img, f"cropped_date_bf_blur({self.filename}).jpg")
-        # crop_img = cv2.GaussianBlur(crop_img, (3, 3), 0)
-        # self._save_debug_img(crop_img, f"cropped_date_af_blur({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"cropped_date({self.filename}).jpg")
         numbers = self.get_value_from_image(crop_img, 'numbers', parse_just_in_numbers=True)
         if len(numbers) == 12:
             return f"{numbers[:2]}:{numbers[2:4]}:{numbers[4:6]} {numbers[6:8]}.{numbers[8:10]}.{numbers[10:]}"
@@ -221,12 +198,12 @@ class ParseCheck:
         return numbers
 
     @staticmethod
-    def get_value_from_image(cropped_img, data_type, parse_just_in_numbers=False):  # type can be numbers, cards, title, date
+    def get_value_from_image(cropped_img, data_type, parse_just_in_numbers=False):
         min_width_and_height = {  # For cropped elements
-            "numbers": [4, 11],
+            "numbers": [5, 11],
             "cards": [100, 150],
             "title": [1000, 1000],  # this need find like all image
-            "date": [4, 11]
+            "date": [5, 11]
         }
         edges = cv2.Canny(cropped_img, 50, 200)
         # cv2.imshow('', edges)
@@ -258,33 +235,32 @@ class ParseCheck:
                 x, y, w, h = contour
                 cropped_contour = cropped_img[y-2:y + h, x-2:x + w]
             else:
-                x, y, _, _ = contour
-                cropped_contour = cropped_img[y:y + 30, x:x + 16]
-            ret3, cropped_contour = cv2.threshold(cropped_contour, 170, 255, cv2.THRESH_BINARY)
-
+                x, y, w, h = contour
+                cropped_contour = cropped_img[y:y + h, x:x + w]
+                # cv2.imshow('', cropped_contour)
+                # cv2.waitKey(0)
             if data_type == 'numbers':
                 if parse_just_in_numbers:
                     img = cv2.imread('numbers.png')
                 else:
                     img = cv2.imread('numbers_and_letters.png')
-                    # print(cropped_contour)
-                    # if cropped_contour is not None:
-                    #     cv2.imshow('Image', cropped_contour)
-                    #     cv2.waitKey(0)
+
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                # TODO: border it is bad idea
-                # cropped_contour = cv2.copyMakeBorder(
-                #     cropped_contour,
-                #     top=1,
-                #     bottom=1,
-                #     left=1,
-                #     right=1,
-                #     borderType=cv2.BORDER_CONSTANT,
-                #     value=[255, 255, 255]
-                # )
+                cropped_contour = cv2.copyMakeBorder(
+                    cropped_contour,
+                    top=3,
+                    bottom=3,
+                    left=3,
+                    right=3,
+                    borderType=cv2.BORDER_CONSTANT,
+                    value=[255, 255, 255]
+                )
                 if cropped_contour is not None:
+                    # cv2.imshow('', cropped_contour)
+                    # cv2.waitKey(0)
                     res = cv2.matchTemplate(img, cropped_contour, cv2.TM_CCOEFF_NORMED)
                     y, x = np.unravel_index(res.argmax(), res.shape)
+                    # print(x, y)
 
                     for key, value in d_all_symbols.items():
                         if x in range(*value[0]) and y in range(*value[1]):
@@ -317,8 +293,6 @@ class ParseCheck:
         return result
 
 
-# TODO: Добавить контраста и яркости
-
 # TODO: Нужны новые чеки для анализа (чтобы вытянуть оттуда новые буквы, карты, типы игр???)
 # TODO: Game id, what in the brackets???
 
@@ -328,28 +302,3 @@ info = ParseCheck('images/l_258008_20230615175539.jpg').get_all_info()
 print("Second check")
 info1 = ParseCheck('images/l_258011_20230615175608.jpg').get_all_info()
 
-
-"""
-if self.prep_ticket_out_brightness != 0:
-                    if self.prep_ticket_out_brightness > 0:
-                        shadow = self.prep_ticket_out_brightness
-                        highlight = 255
-                    else:
-                        shadow = 0
-                        highlight = 255 + self.prep_ticket_out_brightness
-                    alpha_b = (highlight - shadow) / 255
-                    gamma_b = shadow
-
-                    self.pic_crop = cv2.addWeighted(self.pic_crop, alpha_b, self.pic_crop, 0, gamma_b)
-                    self.pic_big_gray = cv2.addWeighted(self.pic_big_gray, alpha_b, self.pic_big_gray, 0, gamma_b)
-                    self.pic_big_color = cv2.addWeighted(self.pic_big_color, alpha_b, self.pic_big_color, 0, gamma_b)
-
-                if self.prep_ticket_out_contrast != 0:
-                    f = 131 * (self.prep_ticket_out_contrast + 127) / (127 * (131 - self.prep_ticket_out_contrast))
-                    alpha_c = f
-                    gamma_c = 127 * (1 - f)
-
-                    self.pic_crop = cv2.addWeighted(self.pic_crop, alpha_c, self.pic_crop, 0, gamma_c)
-                    self.pic_big_gray = cv2.addWeighted(self.pic_big_gray, alpha_c, self.pic_big_gray, 0, gamma_c)
-                    self.pic_big_color = cv2.addWeighted(self.pic_big_color, alpha_c, self.pic_big_color, 0, gamma_c)
-"""
