@@ -1,9 +1,12 @@
 .idea/
 
+images/
+new_images/
+data/
+debug_img/
+
 test.py
 test_opencv_lines.py
 *.jpg
+*.log
 
-images/
-data/
-debug_img/
