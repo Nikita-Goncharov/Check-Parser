@@ -4,6 +4,11 @@ images/
 new_images/
 data/
 debug_img/
+123/
+lotto/
+777/
+chance/
+
 
 test.py
 test_opencv_lines.py

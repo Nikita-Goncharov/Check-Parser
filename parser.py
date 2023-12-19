@@ -1,127 +1,15 @@
 import os
 import logging
+import datetime
 
 import cv2
 import numpy as np
 from qreader import QReader
 from colorama import init, Fore, Back, Style
+from elements_coords_in_img import game_types, d_all_symbols, d_table_numbers, cards
 
 init(autoreset=True)
 logging.basicConfig(level=logging.INFO, filename="parser_log.log", filemode="w", style="$")
-
-game_types = {
-    "lotto": [[0, 0], [0, 0]],
-    "123": [[0, 0], [0, 0]],
-    "777": [[710, 1225], [0, 250]],
-    "chance": [[0, 700], [0, 250]]
-}
-
-cards = {
-    "ace-spades": [[40, 185], [40, 260]],
-    "king-spades": [[40, 185], [280, 505]],
-    "queen-spades": [[40, 185], [515, 760]],
-    "jack-spades": [[40, 185], [780, 1020]],
-    "ten-spades": [[40, 185], [1040, 1280]],
-    "nine-spades": [[40, 185], [1300, 1540]],
-    "eighth-spades": [[40, 185], [1560, 1800]],
-    "seven-spades": [[40, 185], [1820, 2060]],
-
-    "ace-hearts": [[192, 335], [40, 260]],
-    "king-hearts": [[192, 335], [280, 505]],
-    "queen-hearts": [[192, 335], [515, 760]],
-    "jack-hearts": [[192, 335], [780, 1020]],
-    "ten-hearts": [[192, 335], [1040, 1280]],
-    "nine-hearts": [[192, 335], [1300, 1540]],
-    "eighth-hearts": [[192, 335], [1560, 1800]],
-    "seven-hearts": [[192, 335], [1820, 2060]],
-
-    "ace-diamonds": [[340, 485], [40, 260]],
-    "king-diamonds": [[340, 485], [280, 505]],
-    "queen-diamonds": [[340, 485], [515, 760]],
-    "jack-diamonds": [[340, 485], [780, 1020]],
-    "ten-diamonds": [[340, 485], [1040, 1280]],
-    "nine-diamonds": [[340, 485], [1300, 1540]],
-    "eighth-diamonds": [[340, 485], [1560, 1800]],
-    "seven-diamonds": [[340, 485], [1820, 2060]],
-
-    "ace-clubs": [[490, 640], [40, 260]],
-    "king-clubs": [[490, 640], [280, 505]],
-    "queen-clubs": [[490, 640], [515, 760]],
-    "jack-clubs": [[490, 640], [780, 1020]],
-    "ten-clubs": [[490, 640], [1040, 1280]],
-    "nine-clubs": [[490, 640], [1300, 1540]],
-    "eighth-clubs": [[490, 640], [1560, 1800]],
-    "seven-clubs": [[490, 6400], [1820, 2060]],
-}
-
-# All coords should be 3+x1, x2+3 and 3+y1, y2+3
-d_table_numbers = {
-    "0": [[0, 30], [0, 50]],
-    "1": [[35, 70], [0, 50]],
-    "2": [[72, 105], [0, 50]],
-    "3": [[110, 145], [0, 50]],
-    "4": [[150, 185], [0, 50]],
-    "5": [[190, 225], [0, 50]],
-    "6": [[230, 265], [0, 50]],
-    "7": [[267, 300], [0, 50]],
-    "8": [[305, 340], [0, 50]],
-    "9": [[345, 380], [0, 50]],
-}
-
-d_numbers = {
-    "0": [[0, 29], [0, 30]],
-    "1": [[32, 63], [0, 30]],
-    "2": [[64, 90], [0, 30]],
-    "3": [[95, 125], [0, 30]],
-    "4": [[132, 160], [0, 30]],
-    "5": [[166, 195], [0, 30]],
-    "6": [[202, 230], [0, 30]],
-    "7": [[237, 265], [0, 30]],
-    "8": [[270, 295], [0, 30]],
-    "9": [[301, 330], [0, 30]],
-    "(": [[340, 355], [0, 35]],
-    ")": [[365, 380], [0, 35]],
-}
-
-d_letters = {
-    "B": [[0, 25], [40, 80]],
-    "Q": [[35, 65], [40, 80]],
-    "P": [[72, 100], [40, 80]],
-    "V": [[110, 135], [40, 80]],
-    "L": [[148, 175], [40, 80]],
-    "C": [[185, 210], [40, 80]],
-    "S": [[215, 240], [40, 80]],
-    "F": [[245, 270], [40, 80]],
-    "Y": [[280, 305], [40, 80]],
-    "G": [[310, 335], [40, 80]],
-    "H": [[345, 370], [40, 80]],
-    "J": [[373, 400], [40, 80]],
-    "R": [[403, 430], [40, 80]],
-    "W": [[435, 462], [40, 80]],
-    "K": [[465, 490], [40, 80]],
-    "D": [[495, 520], [40, 80]],
-    "T": [[525, 552], [40, 80]],
-    "N": [[555, 580], [40, 80]],
-    "Z": [[582, 610], [40, 80]],
-    "X": [[615, 640], [40, 80]],
-    "M": [[643, 670], [40, 80]],
-}
-
-d_special_symbols = {
-    "&": [[0, 30], [83, 120]],
-    "%": [[35, 63], [83, 120]],
-    "#": [[65, 90], [83, 120]],
-    "@": [[95, 125], [83, 120]],
-    "-": [[130, 160], [83, 120]],
-    "*": [[165, 180], [83, 120]],
-    # "(": [[190, 210], [83, 120]],
-    # ")": [[215, 230], [83, 120]],
-}
-
-d_all_symbols = {}
-d_all_symbols.update(d_numbers)
-d_all_symbols.update(d_letters)
-d_all_symbols.update(d_special_symbols)
 
 
 # Content lines in check it is elements relative to which we are looking for the remaining elements
@@ -148,7 +36,7 @@ class CheckParser:
             "game_type": [180, "top_line"],
         },
         "chance": {
-            "spaced_number": [340, "bottom_line"],  # 370 chance_multi
+            "spaced_number": [340, "bottom_line"],  # 370 chance_multi  TODO:  ???
             "date": [60, "bottom_line"],
             "game_id": [20, "bottom_line"],
             "sum": [240, "bottom_line"],
@@ -157,11 +45,11 @@ class CheckParser:
         },
 
         "lotto": {
-            "spaced_number": [000, "bottom_line"],
-            "date": [000, "bottom_line"],
-            "game_id": [000, "bottom_line"],
-            "sum": [000, "bottom_line"],
-            "game_subtype": [000, "bottom_line"],  # from bottom to top
+            "spaced_number": [310, "bottom_line"],
+            "date": [60, "bottom_line"],
+            "game_id": [20, "bottom_line"],
+            "sum": [210, "bottom_line"],
+            "game_subtype": [75, "middle_line"],  # from bottom to top
             "game_type": [000, "top_line"],
         }
     }
@@ -170,12 +58,15 @@ class CheckParser:
         self.img_path = img_path
         self.filename = os.path.basename(img_path).split(".")[0]
         self.original_img = cv2.imread(self.img_path)
+        self.original_img_grayscale = cv2.imread(self.img_path, cv2.IMREAD_GRAYSCALE)
         self.img_height, self.img_width = self.original_img.shape[:2]
         self.qr_code_info = {}
         self.qr_code_found = False
 
         # will like {
+        # "top_border_line": {...},
         # "top_line": {"min_x": min_x, "max_x": max_x, "y": y},
+        # "middle_line": {...},
         # "bottom_line": {"min_x": min_x, "max_x": max_x, "y": y}
         # }
         self.two_longest_lines = {}
@@ -189,6 +80,7 @@ class CheckParser:
             "spent_on_ticket": 0.0,
             "dashed_number": "",
             "spaced_number": "",
+            "extra": False,
             "cards": {
                 "hearts": [],
                 "diamonds": [],
@@ -202,17 +94,29 @@ class CheckParser:
             ]
         }
 
-        contrast = .99  # Contrast control ( 0 to 127)
-        brightness = .1  # Brightness control (0-100)
-        contrasted_img = cv2.addWeighted(self.original_img, contrast, self.original_img, 0, brightness)
-        # cv2.imshow('', contrasted_img)
-        # cv2.waitKey(0)
-        blured_img = cv2.GaussianBlur(contrasted_img, [3, 3], 0)
+        contrast = .99  # (0-127)
+        brightness = .1  # (0-100)
+        contrasted_img = cv2.addWeighted(
+            self.original_img_grayscale,
+            contrast,
+            self.original_img_grayscale, 0,
+            brightness
+        )
+        blured_img_main = cv2.bilateralFilter(contrasted_img, 1, 75, 75)
 
-        # thresh, im_bw = cv2.threshold(blured_img, 160, 255, cv2.THRESH_TOZERO)
-        grayImg = cv2.cvtColor(blured_img, cv2.COLOR_BGR2GRAY)
-        thresh, self.wb_blured_img = cv2.threshold(grayImg, 180, 255, cv2.THRESH_BINARY)
-        self._save_debug_img(self.wb_blured_img, f"wb_blured_img/wb_blured_img({self.filename}).jpg")
+        im_bw = cv2.threshold(blured_img_main, 164, 255, cv2.THRESH_TOZERO)[1]
+        self.wb_blured_img = cv2.threshold(im_bw, 130, 255, cv2.THRESH_BINARY)[1]
+        self._save_debug_img(self.wb_blured_img, f"wb_blured/wb_blured({self.filename}).jpg")
+
+    def get_game_type(self):
+        crop_img = self.wb_blured_img[
+                   self.qr_code_info["bottom_left"][1] + 310:self.qr_code_info["bottom_left"][1] + 310 + 300,
+                   self.qr_code_info["top_left"][0] - 158:self.qr_code_info["top_right"][0] + 158
+        ]
+        self._save_debug_img(crop_img, f"game_type/game_type_not_cropped({self.filename}).jpg")
+        parsed_type = self.get_value_from_image(crop_img, "game_type")
+        self.check_info["game_type"] = parsed_type
+        return parsed_type
 
     def _rotate_img(self):
         self.original_img = cv2.rotate(self.original_img, cv2.ROTATE_90_CLOCKWISE)
@@ -220,14 +124,13 @@ class CheckParser:
 
         self.img_width, self.img_height = self.img_height, self.img_width
 
-        self._save_debug_img(self.wb_blured_img, f"wb_blured_img/wb_blured_img({self.filename}).jpg")
+        self._save_debug_img(self.wb_blured_img, f"wb_blured/wb_blured({self.filename}).jpg")
 
     def _is_valid_img(self):
         response = self.try_get_qr_code()
         response_status = response["success"]
         if response_status:
             qr_corners_coords = response["corners_coords"]
-            # print(qr_corners_coords)
             top_left_OY = int(qr_corners_coords[0][1])
             top_left_OX = int(qr_corners_coords[0][0])
             if top_left_OY not in self.QR_CODE_RANGE:  # Vertical(img) QR code at bottom
@@ -304,12 +207,16 @@ class CheckParser:
 
     def get_coords_of_main_lines(self):
         gray = cv2.cvtColor(self.original_img, cv2.COLOR_BGR2GRAY)
-        img = cv2.threshold(gray, 170, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        blured_img_lines = cv2.GaussianBlur(gray, [5, 5], 0)
+        img_lines = cv2.threshold(blured_img_lines, 180, 255, cv2.THRESH_BINARY)[1]
+        img = cv2.threshold(img_lines, 180, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        self._save_debug_img(img, f"wb_inverted/wb_inverted({self.filename}).jpg")
 
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 1))
         horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
-        detect_horizontal = cv2.morphologyEx(img, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
-        # cv2.imshow('', detect_horizontal)
-        # cv2.waitKey(0)
+        img_dilation = cv2.dilate(img, kernel, iterations=2)
+        detect_horizontal = cv2.morphologyEx(img_dilation, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
+        cv2.imwrite('test_dilation.png', detect_horizontal)
         contours_points = cv2.findContours(detect_horizontal, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         # One of elements it is data what we do not really need
@@ -353,9 +260,10 @@ class CheckParser:
 
         # We need only two lines around cards/table
         # So this two lines have the most points count(width)
-        line_threshold = self.img_width - 100  # if line width >= threshold then we take this line
-        # print("Result lines points:", result_lines_points)
+        line_threshold = self.img_width - 250  # if line width >= threshold then we take this line
+
         lines = []
+
         for line_points in result_lines_points:
             min_x, max_x, sum_y = line_points[0][0], 0, 0
             for x, y in line_points:
@@ -374,43 +282,38 @@ class CheckParser:
             if condition:
                 lines.append({"min_x": min_x, "max_x": max_x, "y": y})
 
-        lines.sort(key=lambda line_data: line_data["y"])
-        if len(lines) == 2:
-            self.two_longest_lines = {"top_line": lines[0], "bottom_line": lines[1]}
-        elif len(lines) == 0:
+        if len(lines) == 0:
             print(Style.BRIGHT + Back.RED + Fore.WHITE + "LINES NOT FOUND")
         elif len(lines) == 1:
             print(Style.BRIGHT + Back.RED + Fore.WHITE + "NOT ALL LINES WERE FOUND")
         else:
-            # Here in lines can be more than two lines now
-            # But the two needed ones are the longest
-
-            # unique_lines = []
-            # for index, line_dict in enumerate(lines):
-            #     if index == 0:
-            #         unique_lines.append(line_dict)
-            #         continue
-            #     else:
-            #         # Add line in two lines result if OY of current line bigger than 10 than previous line
-            #         last_unique_line = unique_lines[-1]
-            #         if line_dict["y"] - last_unique_line["y"] >= 10:
-            #             unique_lines.append(line_dict)
-
-            lines = sorted(lines, key=lambda line: line["max_x"] - line["min_x"])
-            lines = [lines[-1], lines[-2]]
+            # Here in lines can be more than four lines now
+            # But the four needed ones are the longest
+            lines = sorted(lines, key=lambda line: line["max_x"] - line["min_x"], reverse=True)
+            lines = lines[:4]
             lines.sort(key=lambda line_data: line_data["y"])
-
-            self.two_longest_lines = {"top_line": lines[0], "bottom_line": lines[1]}
-
-    def get_game_type(self):
-        top_line = self.two_longest_lines["top_line"]
-        crop_img = self.wb_blured_img[
-                   top_line["y"] - 190 - 300:top_line["y"] - 190,
-                   self.qr_code_info["top_left"][0] - 158:self.qr_code_info["top_right"][0] + 158
-        ]
-        parsed_type = self.get_value_from_image(crop_img, "game_type")
-        self.check_info["game_type"] = parsed_type
-        return parsed_type
+            print("Sorted lines:", lines)
+            if len(lines) == 2:
+                self.two_longest_lines = {
+                    "top_border_line": {},
+                    "top_line": lines[0],
+                    "middle_line": {},
+                    "bottom_line": lines[1]
+                }
+            elif len(lines) == 3:
+                self.two_longest_lines = {
+                    "top_border_line": {},
+                    "top_line": lines[0],
+                    "middle_line": lines[1],
+                    "bottom_line": lines[2]
+                }
+            else:
+                self.two_longest_lines = {
+                    "top_border_line": lines[0],
+                    "top_line": lines[1],
+                    "middle_line": lines[2],
+                    "bottom_line": lines[3]
+                }
 
     def get_game_subtype(self, game_type):
         distance_line = self.games_elements_distance[game_type]["game_subtype"]
@@ -419,7 +322,7 @@ class CheckParser:
             line["y"] - distance:line["y"],
             self.qr_code_info["top_left"][0] - 158:self.qr_code_info["top_right"][0] + 158
         ]
-        self._save_debug_img(crop_img, f"cropped_subtype({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"subtype/subtype({self.filename}).jpg")
         parsed_subtype = self.get_value_from_image(crop_img, "game_subtype")
         self.check_info["game_subtype"] = parsed_subtype
         return parsed_subtype
@@ -432,14 +335,15 @@ class CheckParser:
             line["y"] + distance:line["y"] + distance + 40,
             self.qr_code_info["top_left"][0] - 125:self.qr_code_info["top_left"][0] + 90
         ]
-        self._save_debug_img(crop_img, f"cropped_spent_money({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"spent_money/spent_money({self.filename}).jpg")
         parsed_numbers = self.get_value_from_image(crop_img, "sum")
 
         numbers = ""
         for symbol in parsed_numbers:
             if symbol.isnumeric():
                 numbers += symbol
-        self.check_info["spent_on_ticket"] = float(numbers[0:len(numbers) - 2])  # TODO: remove -2(removing zeroes from end)
+        numbers = numbers[0:-2] + "." + numbers[-2:]
+        self.check_info["spent_on_ticket"] = float(numbers[0:len(numbers)])
         return self.check_info["spent_on_ticket"]
 
     def get_check_dashed_number(self, game_type):
@@ -447,7 +351,7 @@ class CheckParser:
             self.img_height - 75:self.img_height - 30,
             self.qr_code_info["top_left"][0] - 55:self.qr_code_info["top_right"][0] + 55
         ]
-        self._save_debug_img(crop_img, f"cropped_dashed_number({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"dashed_number/dashed_number({self.filename}).jpg")
         numbers = self.get_value_from_image(crop_img, "numbers")
 
         if len(numbers) == 19:
@@ -467,7 +371,7 @@ class CheckParser:
             line["y"] + distance:line["y"] + distance + 40,
             self.qr_code_info["top_left"][0] - 130:self.qr_code_info["top_right"][0] + 130
         ]
-        self._save_debug_img(crop_img, f"cropped_spaced_number({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"spaced_number/spaced_number({self.filename}).jpg")
         numbers = self.get_value_from_image(crop_img, "numbers", parse_just_in_numbers=False)
         if len(numbers) == 26:
             spaced_number = f"{numbers[:8]} {numbers[8:17]} {numbers[17:]}"
@@ -480,18 +384,20 @@ class CheckParser:
             raise Exception(f"The length of the number is not correct(spaced_number)\nNumber: {numbers}")
 
     def get_cards(self):
+        top_line = self.two_longest_lines["top_line"]
+        bottom_line = self.two_longest_lines["bottom_line"]
+
         crop_img = self.wb_blured_img[
-            self.two_longest_lines["top_line"]["y"]:self.two_longest_lines["bottom_line"]["y"],
+            top_line["y"]:bottom_line["y"],
             self.qr_code_info["top_left"][0] - 200:self.qr_code_info["top_right"][0] + 200
         ]
-        self._save_debug_img(crop_img, f"cropped_cards({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"cards/cards({self.filename}).jpg")
         cards = self.get_value_from_image(crop_img, "cards")
-        if len(cards.split()) <= 4:
-            return cards
-        else:
+        if len(cards.split()) == 0:
             raise Exception(f"The count of the cards is not correct(cards)\nCards: {cards}")
+        return cards
 
-    def get_table(self):
+    def get_table_123_777(self):
         if self.bottom_oy_border_for_table == 0:
             bottom_oy_border = self.two_longest_lines["bottom_line"]["y"]
         else:
@@ -500,9 +406,28 @@ class CheckParser:
             self.two_longest_lines["top_line"]["y"]:bottom_oy_border,
             self.qr_code_info["top_left"][0] - 300:self.qr_code_info["top_right"][0] + 200
         ]
-        self._save_debug_img(crop_img, f"cropped_table({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"table/table({self.filename}).jpg")
         table = self.get_value_from_image(crop_img, "table")
         return table
+
+    def get_table_lotto(self):  # TODO: find lotto table
+        pass
+
+    def get_extra(self):
+        # True(number) or False
+        middle_line = self.two_longest_lines["middle_line"]
+        bottom_line = self.two_longest_lines["bottom_line"]
+
+        crop_img = self.wb_blured_img[
+                   middle_line["y"]:bottom_line["y"],
+                   self.qr_code_info["top_left"][0] - 200:self.qr_code_info["top_right"][0] + 200
+                   ]
+        self._save_debug_img(crop_img, f"extra/extra({self.filename}).jpg")
+        is_extra = False
+        # is_extra = self.get_value_from_image(crop_img, "is_extra")
+        if is_extra:
+            pass
+            # extra = self.get_value_from_image(crop_img, "extra")
 
     def get_date(self, game_type):
         distance_line = self.games_elements_distance[game_type]["date"]
@@ -511,34 +436,36 @@ class CheckParser:
             line["y"] + distance:line["y"] + distance + 30,
             self.qr_code_info["top_left"][0] - 85:self.qr_code_info["top_left"][0] + 255
         ]
-        self._save_debug_img(crop_img, f"cropped_date({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"date/date({self.filename}).jpg")
         numbers = self.get_value_from_image(crop_img, "date")
         if len(numbers) == 12:
             date = f"{numbers[:2]}:{numbers[2:4]}:{numbers[4:6]} {numbers[6:8]}.{numbers[8:10]}.{numbers[10:]}"
-            self.check_info["date"] = date
+            self.check_info["date"] = datetime.datetime.strptime(date, "%H:%M:%S %d.%m.%y")  #date
             return date
         else:
             raise Exception(f"The length of the number is not correct(date)\nNumber: {numbers}")
 
-    def get_game_id(self, game_type):
+    def get_game_id(self, game_type):  # TODO: find few game_ids, if exists
         distance_line = self.games_elements_distance[game_type]["game_id"]
         distance, line = distance_line[0], self.two_longest_lines[distance_line[1]]
         crop_img = self.wb_blured_img[
             line["y"] + distance:line["y"] + distance + 40,
             self.qr_code_info["top_left"][0] - 120:self.qr_code_info["top_left"][0] + 90
         ]
-        self._save_debug_img(crop_img, f"cropped_game_id({self.filename}).jpg")
+        self._save_debug_img(crop_img, f"game_id/game_id({self.filename}).jpg")
         numbers = self.get_value_from_image(crop_img, "game_id", parse_just_in_numbers=False)
-        self.check_info["game_id"] = numbers
+        self.check_info["game_id"] = numbers.split('(')[0]
         return numbers
 
     def get_value_from_image(self, cropped_img, data_type, parse_just_in_numbers=True):
+        # FIXME: table of nums
+
         # data_type: numbers, date, game_id, sum, table, cards, game_type, game_subtype
         min_width_and_height = {  # For cropped contours [min_width, min_height]
             "numbers": [6, 11],
             "table": [10, 20],
             "cards": [100, 150],
-            "game_type": [50, 70],
+            "game_type": [30, 70],
             "game_subtype": [10, 20],
             "date": [6, 11],
             "sum": [6, 11],
@@ -578,9 +505,10 @@ class CheckParser:
                 unique_contours.append(contour)
                 continue
             else:
-                # Append contour if contour OX more than prev by 13px
+                # Append contour if contour OX more than prev by (contour_threshold)px
+                contour_threshold = 20 if data_type == "cards" else 13
                 last_unique_contour = unique_contours[-1]
-                if contour[0] - last_unique_contour[0] >= 13:
+                if contour[0] - last_unique_contour[0] >= contour_threshold:
                     unique_contours.append(contour)
                 else:
                     # Else check square, if current bigger then swap contour in unique_contours
@@ -599,7 +527,7 @@ class CheckParser:
                 last_contour[1]: first_contour[1] + first_contour[3],
                 first_contour[0]:last_contour[0] + last_contour[2]
             ]
-            self._save_debug_img(check_title, f"cropped_game_type({self.filename}).jpg")
+            self._save_debug_img(check_title, f"game_type/game_type({self.filename}).jpg")
             res = cv2.matchTemplate(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), cv2.cvtColor(check_title, cv2.COLOR_BGR2RGB),
                                     cv2.TM_CCOEFF_NORMED)
             y, x = np.unravel_index(res.argmax(), res.shape)
@@ -665,7 +593,7 @@ class CheckParser:
                 # self.bottom_oy_border_for_table = self.two_longest_lines["bottom_line"]["y"] - 30
                 result = "123_regular"
 
-            elif game_type == "lotto":
+            elif game_type == "lotto":  # TODO: subtype
                 # self.bottom_oy_border_for_table = self.two_longest_lines["bottom_line"]["y"] - 30
                 # TODO: regular, strong, systematic
                 pass
@@ -681,8 +609,6 @@ class CheckParser:
 
             rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 3))
             dilation = cv2.dilate(255-cropped_img, rect_kernel, iterations=1)
-            # cv2.imshow('dilation', dilation)
-            # cv2.waitKey(0)
 
             contours, hierarchy = cv2.findContours(dilation, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
@@ -691,7 +617,8 @@ class CheckParser:
             contours = sorted(contours, key=lambda contour: contour[0])
             for cnt in contours:
                 x, y, w, h = cnt
-                # print(x, y, w, h)
+                if w < 100:
+                    continue
 
                 current_x = x + 7  # TODO: find OX of first black symbol
                 while ((x + w) - current_x) > 15:
@@ -719,7 +646,7 @@ class CheckParser:
 
                     res = cv2.matchTemplate(img, cropped_contour, cv2.TM_CCOEFF_NORMED)
                     symbol_y, symbol_x = np.unravel_index(res.argmax(), res.shape)
-                    # print(symbol_y, symbol_x)
+                    print(symbol_x, symbol_y)
                     for key, value in d_all_symbols.items():
                         if symbol_x in range(*value[0]) and symbol_y in range(*value[1]):
                             result += key
@@ -731,7 +658,7 @@ class CheckParser:
 
         for contour in unique_contours:
             x, y, w, h = contour
-            # print(x, y, w, h)
+
             if data_type == "cards":
                 cropped_contour = cropped_img[y - 2:y + h, x - 2:x + w]
             else:
@@ -753,7 +680,7 @@ class CheckParser:
                 if cropped_contour is not None:
                     res = cv2.matchTemplate(img, cropped_contour, cv2.TM_CCOEFF_NORMED)
                     y, x = np.unravel_index(res.argmax(), res.shape)
-                    # print(x, y)
+                    print(x, y)
                     for key, value in d_all_symbols.items():
                         if x in range(*value[0]) and y in range(*value[1]):
                             result += key
@@ -795,6 +722,8 @@ class CheckParser:
                 y, x = np.unravel_index(res.argmax(), res.shape)
                 for key, value in cards.items():
                     if x in range(*value[0]) and y in range(*value[1]):
+                        card, card_type = key.split("-")
+                        self.check_info["cards"][card_type].append(card)
                         result += key + " "
         return result
 
@@ -802,47 +731,46 @@ class CheckParser:
         response = self._is_valid_img()
         if response["success"]:
             self.get_coords_of_main_lines()
+
             logging.info(f"Main check lines: {self.two_longest_lines}")
             logging.info(f"QR code is found: {self.qr_code_found}")
+
             game_type = self.get_game_type()
+
             logging.info(f"Game type: {game_type}")
             print("Game type:", game_type)
+
             print("Game subtype:", self.get_game_subtype(game_type))
 
             # print("QR code link:", self.qr_code_info["link"])
-            print("Spaced number:", self.get_check_spaced_number(game_type))
-            print("Dashed number:", self.get_check_dashed_number(game_type))
-            print("Spent money:", self.get_spent_money(game_type))
-            print("Date:", self.get_date(game_type))
             print("Game_id:", self.get_game_id(game_type))
+            print("Date:", self.get_date(game_type))
+            print("Spent money:", self.get_spent_money(game_type))
+            print("Dashed number:", self.get_check_dashed_number(game_type))
+            print("Spaced number:", self.get_check_spaced_number(game_type))
 
             if game_type == "chance":
-                print("Cards:", self.get_cards())
+                self.get_cards()
+                print("Cards:", self.check_info["cards"])
+            elif game_type == "lotto":
+                print("Table:", self.get_table_lotto())
+                print("Is extra:", self.get_extra())
             else:
-                print("Table:", self.get_table())
-
+                print("Table:", self.get_table_123_777())
+            print(self.check_info)
         else:
             print(Style.BRIGHT + Back.RED + Fore.WHITE + f"{response['description']}")
-
-# FIXME: spaced number, table of nums, lines
-
-# TODO: find few game_ids, if exists
-
-# TODO: find third line for extra in lotto
-# TODO: find lotto table
-
-# TODO: subtype
 
 
 # Code for testing
 checks_count = 0
-check_folder = os.listdir("new_images")
+check_folder = "lotto"
+checks_list = os.listdir(check_folder)
 logging.info(f"Checks folder: {check_folder}")
-# check_files = os.listdir("images/cards_game")
-for file in check_folder:
-    path = f"new_images/{file}"
+
+for file in checks_list:
+    path = os.path.join(check_folder, file)
     logging.info(f"File path: {path}")
-    # path = f"images/cards_game/{file}"
     if os.path.isfile(path):
         print(Style.BRIGHT + Back.WHITE + Fore.BLUE + "**********************************************")
         print("Current check:", path)
