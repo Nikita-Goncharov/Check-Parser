@@ -1,0 +1,7 @@
+[tool.ruff]
+
+line-length = 121
+
+[tool.ruff.lint]
+
+extend-select = ["E501"]

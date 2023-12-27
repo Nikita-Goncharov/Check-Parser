@@ -1,5 +1,4 @@
 .idea/
-
 images/
 new_images/
 data/
@@ -8,10 +7,12 @@ debug_img/
 lotto/
 777/
 chance/
-
+__pycache__/
+.ruff_cache/
 
 test.py
 test_opencv_lines.py
+
 *.jpg
 *.log
 
