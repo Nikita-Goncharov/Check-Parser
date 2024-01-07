@@ -63,7 +63,14 @@ class CheckParser:
         self.img_height, self.img_width = self.original_img.shape[:2]
         self.qr_code_info = {}
         self.qr_code_found = False
-
+        self.main_data_contours = {
+            "game_ids_count": 0,
+            "game_id": (),
+            "date": (),
+            "sum": (),
+            "spaced_number": (),
+            "dashed_number": ()
+        }
         # will like {
         # "top_border_line": {...},
         # "top_line": {"min_x": min_x, "max_x": max_x, "y": y},
@@ -89,9 +96,7 @@ class CheckParser:
                 "spades": [],
                 "clubs": []
             },
-            "table": [
-
-            ]
+            "table": {}
         }
 
         contrast = .99  # (0-127)
@@ -104,15 +109,19 @@ class CheckParser:
         )
         blured_img_main = cv2.bilateralFilter(contrasted_img, 1, 75, 75)
 
-        im_bw = cv2.threshold(blured_img_main, 164, 255, cv2.THRESH_TOZERO)[1]
-        self.wb_blured_img = cv2.threshold(im_bw, 130, 255, cv2.THRESH_BINARY)[1]
+        im_bw = cv2.threshold(blured_img_main, 170, 255, cv2.THRESH_TOZERO)[1]
+        self.wb_blured_img = cv2.threshold(im_bw, 10, 255, cv2.THRESH_BINARY)[1]
+
+        denoised_img = self._denoise_wb_img(self.wb_blured_img)
+        self.wb_blured_img = denoised_img
+
         self._save_debug_img(self.wb_blured_img, f"wb_blured/wb_blured({self.filename}).jpg")
 
     def get_game_type(self):
         crop_img = self.wb_blured_img[
                    self.qr_code_info["bottom_left"][1] + 310:self.qr_code_info["bottom_left"][1] + 310 + 300,
                    self.qr_code_info["top_left"][0] - 158:self.qr_code_info["top_right"][0] + 158
-        ]
+                   ]
         self._save_debug_img(crop_img, f"game_type/game_type_not_cropped({self.filename}).jpg")
         parsed_type = self.get_value_from_image(crop_img, "game_type")
         self.check_info["game_type"] = parsed_type
@@ -154,16 +163,17 @@ class CheckParser:
 
     @staticmethod
     def _save_debug_img(img, filepath):
-        if not os.path.exists("debug_img"):
-            os.mkdir("debug_img")
+        debug_img_folder = ".debug_img"
+        if not os.path.exists(debug_img_folder):
+            os.mkdir(debug_img_folder)
 
         splited_path = os.path.split(filepath)
         if splited_path[0] != "":
             folder = splited_path[0]
-            if not os.path.exists(os.path.join("debug_img", folder)):
-                os.mkdir(os.path.join("debug_img", folder))
+            if not os.path.exists(os.path.join(debug_img_folder, folder)):
+                os.mkdir(os.path.join(debug_img_folder, folder))
 
-        debug_path = os.path.join("debug_img", filepath)
+        debug_path = os.path.join(debug_img_folder, filepath)
         cv2.imwrite(debug_path, img)
 
     def try_get_qr_code(self):
@@ -225,21 +235,21 @@ class CheckParser:
             strong_contour_nums.sort(key=lambda cnt: [1])
         return regular_contour_nums, strong_contour_nums
 
-    # @staticmethod
-    # def _denoise_wb_img(cropped_img, noise_width=10, noise_height=10):
-    #     contours = cv2.findContours(cropped_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)[0]  # CHAIN_APPROX_NONE
-    #     contours = [cv2.boundingRect(cnt) for cnt in contours]
-    #
-    #     contours = sorted(contours, key=lambda cnt: cnt[2] * cnt[3])
-    #     for cnt in contours:
-    #         x, y, w, h = cnt
-    #         if w < noise_width or h < noise_height:
-    #             for i in range(h):
-    #                 for j in range(w):
-    #                     cropped_img[y + i, x + j] = 255
-    #         else:
-    #             break
-    #     return cropped_img
+    @staticmethod
+    def _denoise_wb_img(cropped_img, noise_width=5, noise_height=5):
+        contours = cv2.findContours(cropped_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)[0]  # CHAIN_APPROX_NONE
+        contours = [cv2.boundingRect(cnt) for cnt in contours]
+
+        contours = sorted(contours, key=lambda cnt: cnt[2] * cnt[3])
+        for cnt in contours:
+            x, y, w, h = cnt
+            if w < noise_width or h < noise_height:
+                for i in range(h):
+                    for j in range(w):
+                        cropped_img[y + i, x + j] = 255
+            else:
+                break
+        return cropped_img
 
     def get_coords_of_main_lines(self):
         blured_img_lines = cv2.GaussianBlur(self.original_img_grayscale, [5, 5], 0)
@@ -326,7 +336,6 @@ class CheckParser:
             lines = sorted(lines, key=lambda line: line["max_x"] - line["min_x"], reverse=True)
             lines = lines[:4]
             lines.sort(key=lambda line_data: line_data["y"])
-            # print("Sorted lines:", lines)
             if len(lines) == 2:  # 123, 777, chance
                 self.longest_lines = {
                     "top_border_line": {},
@@ -350,8 +359,59 @@ class CheckParser:
                 }
             print(self.longest_lines)
 
+    def get_main_data_contours(self):
+        def split_contours_by_width(contours):
+            index_of_first_small_contour = 0
+            for index, contour in enumerate(contours):
+                if contour[2] < 400:
+                    index_of_first_small_contour = index
+                    break
+
+            large_contours = contours[:index_of_first_small_contour]
+            small_contours = contours[index_of_first_small_contour::]
+
+            return large_contours, small_contours
+
+        bottom_line = self.longest_lines["bottom_line"]
+        initial_img = self.wb_blured_img[
+            bottom_line["y"]:self.img_height,
+            0:self.img_width
+        ]
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (60, 5))
+        img = cv2.morphologyEx(initial_img, cv2.MORPH_OPEN, kernel)
+
+        contours = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)[0]
+        contours = [cv2.boundingRect(cnt) for cnt in contours]
+
+        contours = [cnt for cnt in contours if cnt[3] > 20 and cnt[3] < 50]
+        contours.sort(key=lambda cnt: cnt[2], reverse=True)  # by width
+        l_contours, s_contours = split_contours_by_width(contours)
+        l_contours.sort(key=lambda cnt: cnt[1]); s_contours.sort(key=lambda cnt: cnt[1])  # by OY
+        check_sum_line = s_contours[-2:]
+        check_sum_line.sort(key=lambda cnt: cnt[0])  # by OX
+
+        game_id_line, date_line, *spaced_dashed_numbers = l_contours[-4:]
+        game_id_line = (
+            game_id_line[0],
+            game_id_line[1],
+            game_id_line[2] - 327,
+            game_id_line[3]
+        )
+        date_line = (
+            date_line[0],
+            date_line[1],
+            date_line[2] - 167,
+            date_line[3]
+        )
+        self.main_data_contours["game_ids_count"] = len(l_contours[:-3])
+        self.main_data_contours["game_id"] = game_id_line
+        self.main_data_contours["date"] = date_line
+        self.main_data_contours["sum"] = check_sum_line[0]
+        self.main_data_contours["spaced_number"] = spaced_dashed_numbers[0]
+        self.main_data_contours["dashed_number"] = spaced_dashed_numbers[1]
+
     def get_game_subtype(self):
-        img = cv2.imread("no_needed_data.png")
+        img = cv2.imread("no_needed_repeat_game.png")
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         game_type = self.check_info["game_type"]
         distance_line = self.games_elements_distance[game_type]["game_subtype"]
@@ -369,7 +429,10 @@ class CheckParser:
                 line["y"] - 115:line["y"] - 50,
                 self.qr_code_info["top_left"][0] - 158:self.qr_code_info["top_right"][0] + 158
             ]
-            self.bottom_oy_border_for_table = self.longest_lines["bottom_line"]["y"] - 55
+            if self.check_info["game_type"] == "lotto":
+                self.bottom_oy_border_for_table = self.longest_lines["middle_line"]["y"] - 55
+            else:
+                self.bottom_oy_border_for_table = self.longest_lines["bottom_line"]["y"] - 55
 
         self._save_debug_img(crop_img, f"subtype/subtype({self.filename}).jpg")
         parsed_subtype = self.get_value_from_image(crop_img, "game_subtype")
@@ -377,14 +440,13 @@ class CheckParser:
         return parsed_subtype
 
     def get_spent_money(self):
-        game_type = self.check_info["game_type"]
-        distance_line = self.games_elements_distance[game_type]["sum"]
-        distance, line = distance_line[0], self.longest_lines[distance_line[1]]
-
+        bottom_line = self.longest_lines["bottom_line"]
+        sum_contour = self.main_data_contours["sum"]  # (x, y, w, h)
         crop_img = self.wb_blured_img[
-            line["y"] + distance:line["y"] + distance + 40,
-            self.qr_code_info["top_left"][0] - 125:self.qr_code_info["top_left"][0] + 90
+            bottom_line["y"] + sum_contour[1]:bottom_line["y"] + sum_contour[1] + sum_contour[3],
+            sum_contour[0]:sum_contour[0] + sum_contour[2]
         ]
+
         self._save_debug_img(crop_img, f"spent_money/spent_money({self.filename}).jpg")
         parsed_numbers = self.get_value_from_image(crop_img, "sum")
 
@@ -397,10 +459,13 @@ class CheckParser:
         return self.check_info["spent_on_ticket"]
 
     def get_check_dashed_number(self):
+        bottom_line = self.longest_lines["bottom_line"]
+        dashed_number_contour = self.main_data_contours["dashed_number"]  # (x, y, w, h)
         crop_img = self.wb_blured_img[
-            self.img_height - 75:self.img_height - 30,
-            self.qr_code_info["top_left"][0] - 55:self.qr_code_info["top_right"][0] + 55
+            bottom_line["y"] + dashed_number_contour[1]:bottom_line["y"] + dashed_number_contour[1] + dashed_number_contour[3],
+            dashed_number_contour[0]:dashed_number_contour[0] + dashed_number_contour[2]
         ]
+
         self._save_debug_img(crop_img, f"dashed_number/dashed_number({self.filename}).jpg")
         numbers = self.get_value_from_image(crop_img, "numbers")
 
@@ -414,15 +479,14 @@ class CheckParser:
             cv2.waitKey(0)
             raise Exception(f"The length of the number is not correct(dashed_number)\nNumber: {numbers}")
 
-    def get_check_spaced_number(self):
-        game_type = self.check_info["game_type"]
-        distance_line = self.games_elements_distance[game_type]["spaced_number"]
-        distance, line = distance_line[0], self.longest_lines[distance_line[1]]
-
+    def get_check_spaced_number(self):  # TODO: fix for "#" symbol
+        bottom_line = self.longest_lines["bottom_line"]
+        spaced_number_contour = self.main_data_contours["spaced_number"]  # (x, y, w, h)
         crop_img = self.wb_blured_img[
-            line["y"] + distance:line["y"] + distance + 40,
-            self.qr_code_info["top_left"][0] - 130:self.qr_code_info["top_right"][0] + 130
+            bottom_line["y"] + spaced_number_contour[1]:bottom_line["y"] + spaced_number_contour[1] + spaced_number_contour[3],
+            spaced_number_contour[0]:spaced_number_contour[0] + spaced_number_contour[2]
         ]
+
         self._save_debug_img(crop_img, f"spaced_number/spaced_number({self.filename}).jpg")
         numbers = self.get_value_from_image(crop_img, "numbers", parse_just_in_numbers=False)
         if len(numbers) == 26:
@@ -446,7 +510,7 @@ class CheckParser:
         self._save_debug_img(crop_img, f"cards/cards({self.filename}).jpg")
         self.get_value_from_image(crop_img, "cards")
 
-    def get_table_123_777(self):  # TODO: make checking for duplicates of numbers  & refactor it to get_value_from_img
+    def get_table_123_777(self):
         game_type = self.check_info["game_type"]
         if self.bottom_oy_border_for_table == 0:
             bottom_oy_border = self.longest_lines["bottom_line"]["y"]
@@ -467,12 +531,11 @@ class CheckParser:
         info_of_contours = [cv2.boundingRect(contour) for contour in contours]  # (x, y, w, h)
 
         # Remove garbage contours
-        min_width = 35 if game_type == "123" else 17
+        min_width = 30 if game_type == "123" else 17
         max_width = 50 if game_type == "123" else 35
         min_height = 35 if game_type == "123" else 35
 
-        sorted_contours = [contour for contour in info_of_contours if
-                           contour[2] >= min_width and contour[2] <= max_width and contour[3] >= min_height]
+        sorted_contours = [contour for contour in info_of_contours if contour[2] >= min_width and contour[2] <= max_width and contour[3] >= min_height]
 
         if game_type == "123":
             if len(sorted_contours) % 3 != 0:
@@ -480,18 +543,18 @@ class CheckParser:
 
             # sort contours in right way n11, n21, n31 n12, n22, n32
             sorted_by_OY = sorted(sorted_contours, key=lambda contour: contour[1])
+
             # group numbers by 3 and sort by OX
             groups_of_numbers = []
             i = 0
             while len(groups_of_numbers) != len(sorted_by_OY) / 3:
-                next_three_numbers = sorted_by_OY[i:i+3]
+                next_three_numbers = sorted_by_OY[i:i + 3]
                 next_three_numbers.sort(key=lambda contour: contour[0])  # sort by OX
                 groups_of_numbers.append(next_three_numbers)
                 i += 3
 
-            self.check_info["table"] = {}
             for index, group in enumerate(groups_of_numbers):
-                self.check_info["table"][f"line_{index+1}"] = {
+                self.check_info["table"][f"line_{index + 1}"] = {
                     "regular": []
                 }
                 for number in group:
@@ -501,9 +564,8 @@ class CheckParser:
                     ]
 
                     table_number = self.get_value_from_image(crop_number, "table")
-                    self.check_info["table"][f"line_{index+1}"]["regular"].append(int(table_number))
+                    self.check_info["table"][f"line_{index + 1}"]["regular"].append(int(table_number))
 
-        # TODO: rewrite table for 777 from list to dict
         elif game_type == "777":
             current_line = 0
             numbers_in_lines = []
@@ -528,32 +590,35 @@ class CheckParser:
                 numbers_in_lines[index] = line
 
             for index, line in enumerate(numbers_in_lines):
-                self.check_info["table"].append([])
+                stringed_numbers = ""
                 for number in line:
                     crop_number = crop_img[
                         number[1]:number[1] + number[3],
                         number[0]:number[0] + number[2]
                     ]
                     table_number = self.get_value_from_image(crop_number, "table")
-                    self.check_info["table"][index].append(table_number)
+                    stringed_numbers += table_number
 
-            # merge 777 numbers by two
-            print(self.check_info["table"])
-            for index, line in enumerate(self.check_info["table"]):
-                new_line = []
+                # merge numbers by two
                 i = 0
-                while i < len(line):
-                    first_number = line[i]
-                    second_number = line[i+1]
-                    new_line.append(int(first_number+second_number))
+                while i < len(stringed_numbers):
+                    try:
+                        make_resulted_number = f"{stringed_numbers[i]}{stringed_numbers[i + 1]}"
+                    except:
+                        make_resulted_number = f"{stringed_numbers[i]}"
+                        print(Style.BRIGHT + Back.RED + Fore.WHITE + f"Not all regular numbers were found in table line")
+
+                    if not self.check_info["table"].get(f"line_{index + 1}", False):
+                        self.check_info["table"][f"line_{index + 1}"] = {
+                            "regular": []
+                        }
+                    self.check_info["table"][f"line_{index + 1}"]["regular"].append(int(make_resulted_number))
                     i += 2
-                self.check_info["table"][index] = new_line
 
         return self.check_info["table"]
 
     def get_table_lotto(self):
         self.check_info["game_subtype"] = "lotto_regular"
-        # TODO: add crop_img by subtype add sort numbers for regular and strong
         if self.bottom_oy_border_for_table == 0:
             bottom_oy_border = self.longest_lines["middle_line"]["y"]
         else:
@@ -576,9 +641,8 @@ class CheckParser:
                                      contour[2] >= 700 and contour[2] <= 800 and contour[3] >= 40]
             sorted_lines_contours.sort(key=lambda line: line[1])
 
-            self.check_info["table"] = {}
             for index, line in enumerate(sorted_lines_contours):
-                self.check_info["table"][f"line_{index+1}"] = {
+                self.check_info["table"][f"line_{index + 1}"] = {
                     "regular": [],
                     "strong": [],
                 }
@@ -598,7 +662,6 @@ class CheckParser:
                 sorted_number_contours.sort(key=lambda cnt: cnt[0])
                 logging.info(f"Lotto table sorted number contours: {sorted_number_contours}")
 
-                # TODO: maybe just find index of first strong element(what will for strong, systematic ???)
                 regular_numbers, strong_numbers = self.split_lotto_number_contours(sorted_number_contours)
 
                 # Find regular numbers
@@ -614,9 +677,6 @@ class CheckParser:
 
                 logging.info(f"Stringed regular numbers: {stringed_numbers}")
 
-                if len(stringed_numbers) % 2 != 0:
-                    print(Style.BRIGHT + Back.RED + Fore.WHITE + f"Not all regular numbers were found in table line")
-
                 # merge numbers by two
                 i = 0
                 while i < len(stringed_numbers):
@@ -624,6 +684,7 @@ class CheckParser:
                         make_resulted_number = f"{stringed_numbers[i]}{stringed_numbers[i + 1]}"
                     except:
                         make_resulted_number = f"{stringed_numbers[i]}"
+                        print(Style.BRIGHT + Back.RED + Fore.WHITE + f"Not all regular numbers were found in table line")
 
                     self.check_info["table"][f"line_{index + 1}"]["regular"].append(int(make_resulted_number))
                     i += 2
@@ -638,7 +699,7 @@ class CheckParser:
                     table_number = self.get_value_from_image(number_img, "table")
                     if table_number == "(":
                         break
-                    self.check_info["table"][f"line_{index+1}"]["strong"].append(int(table_number))
+                    self.check_info["table"][f"line_{index + 1}"]["strong"].append(int(table_number))
 
         # TODO: do parsing for those types
         elif self.check_info["game_subtype"] in ["lotto_strong", "lotto_systematic"]:
@@ -705,13 +766,13 @@ class CheckParser:
         return is_extra
 
     def get_date(self):
-        game_type = self.check_info["game_type"]
-        distance_line = self.games_elements_distance[game_type]["date"]
-        distance, line = distance_line[0], self.longest_lines[distance_line[1]]
+        bottom_line = self.longest_lines["bottom_line"]
+        date_contour = self.main_data_contours["date"]  # (x, y, w, h)
         crop_img = self.wb_blured_img[
-            line["y"] + distance:line["y"] + distance + 30,
-            self.qr_code_info["top_left"][0] - 90:self.qr_code_info["top_left"][0] + 280
+            bottom_line["y"] + date_contour[1]:bottom_line["y"] + date_contour[1] + date_contour[3],
+            date_contour[0]:date_contour[0] + date_contour[2]
         ]
+
         self._save_debug_img(crop_img, f"date/date({self.filename}).jpg")
         numbers = self.get_value_from_image(crop_img, "date")
         if len(numbers) == 12:
@@ -722,15 +783,15 @@ class CheckParser:
             raise Exception(f"The length of the number is not correct(date)\nNumber: {numbers}")
 
     def get_game_id(self):
-        game_type = self.check_info["game_type"]
-        distance_line = self.games_elements_distance[game_type]["game_id"]
-        distance, line = distance_line[0], self.longest_lines[distance_line[1]]
+        bottom_line = self.longest_lines["bottom_line"]
+        game_id_contour = self.main_data_contours["game_id"]  # (x, y, w, h)
         crop_img = self.wb_blured_img[
-            line["y"] + distance:line["y"] + distance + 40,
-            self.qr_code_info["top_left"][0] - 120:self.qr_code_info["top_left"][0] + 90
+            bottom_line["y"] + game_id_contour[1]:bottom_line["y"] + game_id_contour[1] + game_id_contour[3],
+            game_id_contour[0]:game_id_contour[0] + game_id_contour[2]
         ]
+
         self._save_debug_img(crop_img, f"game_id/game_id({self.filename}).jpg")
-        numbers = self.get_value_from_image(crop_img, "game_id", parse_just_in_numbers=False)
+        numbers = self.get_value_from_image(crop_img, "game_id")
         self.check_info["game_id"] = numbers.split('(')[0]
         return numbers
 
@@ -776,19 +837,20 @@ class CheckParser:
 
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-            cropped_img = cv2.copyMakeBorder(
-                cropped_img,
-                top=1,
-                bottom=1,
-                left=0,
-                right=0,
-                borderType=cv2.BORDER_CONSTANT,
-                value=[255, 255, 255]
-            )
+            # for bigger border need change height of table_123_numbers.png
+            # cropped_img = cv2.copyMakeBorder(
+            #     cropped_img,
+            #     top=1,
+            #     bottom=1,
+            #     left=2,
+            #     right=2,
+            #     borderType=cv2.BORDER_CONSTANT,
+            #     value=[255, 255, 255]
+            # )
 
             res = cv2.matchTemplate(img, cropped_img, cv2.TM_CCOEFF_NORMED)
             y, x = np.unravel_index(res.argmax(), res.shape)
-            print(x, y)
+            # print(x, y)
             for key, value in d_table_numbers.items():
                 if x in range(*value[0]) and y in range(*value[1]):
                     return key
@@ -940,7 +1002,8 @@ class CheckParser:
 
             return result
 
-        elif data_type in ["numbers", "date", "sum"]:
+        # TODO: in spaced number "01HVF#7R 409361001 000604494" only first part can be with alpha symbols ???
+        elif data_type in ["numbers", "date", "sum", "game_id"]:
             if not parse_just_in_numbers:
                 img = cv2.imread("numbers_and_letters.png")
             else:
@@ -960,29 +1023,66 @@ class CheckParser:
             # In sum image symbols are located far from each other(so we need make bigger kernel)
             width_of_kernel = 20 if data_type == "sum" else 15
             rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (width_of_kernel, 3))
-
             dilation = cv2.dilate(255 - cropped_img, rect_kernel, iterations=1)
 
-            # cv2.imshow('', dilation)
-            # cv2.waitKey(0)
             contours, hierarchy = cv2.findContours(dilation, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-            im2 = cropped_img.copy()  # TODO: for test
-            contours = map(lambda cnt: cv2.boundingRect(cnt), contours)
-            contours = sorted(contours, key=lambda contour: contour[0])
-            for cnt in contours:
-                x, y, w, h = cnt
-                # print("Block size", x, y, w, h)
+            im2 = cropped_img.copy()
+            contours = list(map(lambda cnt: cv2.boundingRect(cnt), contours))
+            contours.sort(key=lambda contour: contour[0])
+
+            for index, cnt in enumerate(contours):
+                block_x, block_y, block_w, block_h = cnt
                 min_block_width = 70 if data_type == "sum" else 100
-                if w < min_block_width:
+                if block_w < min_block_width:
                     continue
 
-                # FIXME: dashed number last part. Find numbers in block using RECT kernel
-                current_x = x + 7
-                while ((x + w) - current_x) > 15:
-                    cropped_contour = cropped_img[
-                        y:y + h,
-                        current_x:current_x + 17
+                block = cropped_img[
+                    block_y:block_y + block_h,
+                    block_x:block_x + block_w
+                ]
+
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40))
+                img_dilated = cv2.dilate(cv2.threshold(block, 127, 255, cv2.THRESH_BINARY_INV)[1], kernel)
+
+                if not parse_just_in_numbers and data_type == "numbers":
+                    self._save_debug_img(
+                        img_dilated,
+                        f"horizontal_dilation_numbers/spaced_number(block coord{block_x})({self.filename}).png"
+                    )
+                else:
+                    self._save_debug_img(
+                        img_dilated,
+                        f"horizontal_dilation_numbers/{data_type}(block coord{block_x})({self.filename}).png"
+                    )
+
+                lines_contours = cv2.findContours(img_dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
+                lines_contours = [cv2.boundingRect(cnt) for cnt in lines_contours]
+                lines_contours = list(filter(lambda cnt: cnt[2] > 10, lines_contours))
+
+                if not parse_just_in_numbers and data_type == "numbers" and index == 0:
+                    # In first block of spaced number after dilation some can symbols can be in one contour
+                    if len(lines_contours) < 8:
+                        for cnt in lines_contours:
+                            if len(lines_contours) >= 8:
+                                break
+                            x, y, w, h = cnt
+                            if w > 20:
+                                count_needed_symbols = 8 - len(lines_contours) + 1  # +1 because we have this contour
+                                average_symbol_width = w // count_needed_symbols
+                                OX_first_merged_symbol = x
+                                for i in range(count_needed_symbols):
+                                    lines_contours.append((OX_first_merged_symbol, y, average_symbol_width, h))
+                                    OX_first_merged_symbol += average_symbol_width
+                        lines_contours = list(filter(lambda cnt: cnt[2] < 23, lines_contours))
+
+                lines_contours.sort(key=lambda cnt: cnt[0])
+
+                for cnt in lines_contours:
+                    symbol_x, symbol_y, symbol_w, symbol_h = cnt
+                    cropped_contour = block[
+                        symbol_y:symbol_y + symbol_h,
+                        symbol_x:symbol_x + symbol_w
                     ]
 
                     symbol_width, symbol_height = cropped_contour.shape[:2]
@@ -990,11 +1090,11 @@ class CheckParser:
 
                     # Find rects in which count of black pixels less than...
                     minimal_count_black_pixels = 40 if data_type == "numbers" else 60
-                    if symbol_width*symbol_height - count_non_zero < minimal_count_black_pixels and parse_just_in_numbers:
-                        current_x += (17 + 2)
+                    if symbol_width * symbol_height - count_non_zero < minimal_count_black_pixels and parse_just_in_numbers:
                         continue
 
-                    cv2.rectangle(im2, (current_x, y), (current_x + 17, y + h), (0, 0, 0), 1)
+                    cv2.rectangle(im2, (block_x + symbol_x, block_y),
+                                  (block_x + symbol_x + symbol_w, block_y + block_h), (0, 0, 0), 1)
                     cropped_contour = cv2.copyMakeBorder(
                         cropped_contour,
                         top=2,
@@ -1006,13 +1106,14 @@ class CheckParser:
                     )
 
                     res = cv2.matchTemplate(img, cropped_contour, cv2.TM_CCOEFF_NORMED)
-                    symbol_y, symbol_x = np.unravel_index(res.argmax(), res.shape)
-                    print(symbol_x, symbol_y)
+                    found_symbol_y, found_symbol_x = np.unravel_index(res.argmax(), res.shape)
+                    # print(found_symbol_x, found_symbol_y)
                     for key, value in d_all_symbols.items():
-                        if symbol_x in range(*value[0]) and symbol_y in range(*value[1]):
+                        if found_symbol_x in range(*value[0]) and found_symbol_y in range(*value[1]):
                             result += key
-                    current_x += (17 + 2)
-            if len(result) != 26 and not parse_just_in_numbers or len(result) != 19 and parse_just_in_numbers and data_type == "numbers":
+
+            # or len(result) != 19 and parse_just_in_numbers and data_type == "numbers":
+            if len(result) != 26 and not parse_just_in_numbers:
                 cv2.imshow('', im2)
                 cv2.waitKey(0)
 
@@ -1030,31 +1131,8 @@ class CheckParser:
 
         for contour in unique_contours:
             x, y, w, h = contour
-
             cropped_contour = cropped_img[y:y + h, x:x + w]
-            cropped_contour = cv2.copyMakeBorder(
-                cropped_contour,
-                top=2,
-                bottom=2,
-                left=2,
-                right=2,
-                borderType=cv2.BORDER_CONSTANT,
-                value=[255, 255, 255]
-            )
-
-            if data_type == "game_id":
-                img = cv2.imread("numbers.png")
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-                if cropped_contour is not None:
-                    res = cv2.matchTemplate(img, cropped_contour, cv2.TM_CCOEFF_NORMED)
-                    y, x = np.unravel_index(res.argmax(), res.shape)
-                    print(x, y)
-                    for key, value in d_numbers.items():
-                        if x in range(*value[0]) and y in range(*value[1]):
-                            result += key
-
-            elif data_type == "cards":
+            if data_type == "cards":  # TODO: change cards parsing
                 img = cv2.imread("cards.png")
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -1064,7 +1142,6 @@ class CheckParser:
                     if x in range(*value[0]) and y in range(*value[1]):
                         card, card_type = key.split("-")
                         self.check_info["cards"][card_type].append(card)
-        return result
 
     def get_result(self):
         # All should be called in this way
@@ -1080,8 +1157,9 @@ class CheckParser:
 
             logging.info(f"Game type: {game_type}")
             print("Game type:", game_type)
-
             print("Game subtype:", self.get_game_subtype())
+
+            self.get_main_data_contours()
 
             # print("QR code link:", self.qr_code_info["link"])
             print("Game_id:", self.get_game_id())
@@ -1105,23 +1183,16 @@ class CheckParser:
         #     print(Style.BRIGHT + Back.RED + Fore.WHITE + f"ERROR, CAN`T READ THE DATA FROM IMAGE, {ex}")
         #     logging.info(f"WERE RAISED UNEXPECTED EXCEPTION: {ex}")
 
-# Ask:
-# in spaced number "01HVF#7R 409361001 000604494" only first part can be with alpha symbols ???
-# ask for check with lotto_systematic
-# ask for ticket with game_subtype and autofilling and with repeat game data (i need understand the chain)
 
-
-# For my self
 # TODO: remove noise pixels
 # TODO: create raise exception in every method after checks
 
-# TODO: find few game_ids if exists
 # TODO: find "autofilling" data near subtype
 
 
 # Code for testing
 checks_count = 0
-check_folder = "lotto"  # checks directory
+check_folder = "123"  # checks directory
 checks_list = os.listdir(check_folder)
 logging.info(f"Checks folder: {check_folder}")
 
