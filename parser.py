@@ -12,8 +12,6 @@ from elements_coords_in_img import game_types, d_numbers, d_all_symbols, d_table
 init(autoreset=True)
 logging.basicConfig(level=logging.INFO, filename="parser_log.log", filemode="w", style="$")
 
-
-# Content lines in check it is elements relative to which we are looking for the remaining elements
 class CheckParser:
     QR_CODE_RANGE = range(0, 1000)  # Diapason of coords by OX and OY
     MAX_VALID_IMG_WIDTH = 1000
@@ -163,7 +161,7 @@ class CheckParser:
 
     @staticmethod
     def _save_debug_img(img, filepath):
-        debug_img_folder = ".debug_img"
+        debug_img_folder = "debug_img"
         if not os.path.exists(debug_img_folder):
             os.mkdir(debug_img_folder)
 
@@ -1145,67 +1143,66 @@ class CheckParser:
 
     def get_result(self):
         # All should be called in this way
-        # try:
-        response = self._is_valid_img()
-        if response["success"]:
-            self.get_coords_of_main_lines()
+        try:
+            response = self._is_valid_img()
+            if response["success"]:
+                self.get_coords_of_main_lines()
 
-            logging.info(f"Main check lines: {self.longest_lines}")
-            logging.info(f"QR code is found: {self.qr_code_found}")
+                logging.info(f"Main check lines: {self.longest_lines}")
+                logging.info(f"QR code is found: {self.qr_code_found}")
 
-            game_type = self.get_game_type()
+                game_type = self.get_game_type()
 
-            logging.info(f"Game type: {game_type}")
-            print("Game type:", game_type)
-            print("Game subtype:", self.get_game_subtype())
+                logging.info(f"Game type: {game_type}")
+                print("Game type:", game_type)
+                print("Game subtype:", self.get_game_subtype())
 
-            self.get_main_data_contours()
+                self.get_main_data_contours()
 
-            # print("QR code link:", self.qr_code_info["link"])
-            print("Game_id:", self.get_game_id())
-            print("Date:", self.get_date())
-            print("Spent money:", self.get_spent_money())
-            print("Dashed number:", self.get_check_dashed_number())
-            print("Spaced number:", self.get_check_spaced_number())
+                # print("QR code link:", self.qr_code_info["link"])
+                print("Game_id:", self.get_game_id())
+                print("Date:", self.get_date())
+                print("Spent money:", self.get_spent_money())
+                print("Dashed number:", self.get_check_dashed_number())
+                print("Spaced number:", self.get_check_spaced_number())
 
-            if game_type == "chance":
-                self.get_cards()
-                print("Cards:", self.check_info["cards"])
-            elif game_type == "lotto":
-                print("Table:", self.get_table_lotto())
-                print("Is extra:", self.get_extra())
+                if game_type == "chance":
+                    self.get_cards()
+                    print("Cards:", self.check_info["cards"])
+                elif game_type == "lotto":
+                    print("Table:", self.get_table_lotto())
+                    print("Is extra:", self.get_extra())
+                else:
+                    print("Table:", self.get_table_123_777())
+                print(self.check_info)
             else:
-                print("Table:", self.get_table_123_777())
-            print(self.check_info)
-        else:
-            print(Style.BRIGHT + Back.RED + Fore.WHITE + f"{response['description']}")
-        # except Exception as ex:
-        #     print(Style.BRIGHT + Back.RED + Fore.WHITE + f"ERROR, CAN`T READ THE DATA FROM IMAGE, {ex}")
-        #     logging.info(f"WERE RAISED UNEXPECTED EXCEPTION: {ex}")
+                print(Style.BRIGHT + Back.RED + Fore.WHITE + f"{response['description']}")
+        except Exception as ex:
+            print(Style.BRIGHT + Back.RED + Fore.WHITE + f"ERROR, CAN`T READ THE DATA FROM IMAGE, {ex}")
+            logging.info(f"WERE RAISED UNEXPECTED EXCEPTION: {ex}")
 
 
 # TODO: remove noise pixels
 # TODO: create raise exception in every method after checks
-
 # TODO: find "autofilling" data near subtype
 
+if __name__ == "__main__":
+    # Code for testing
+    checks_count = 0
+    check_folder = "123"  # checks directory
+    checks_list = os.listdir(check_folder)
+    logging.info(f"Checks folder: {check_folder}")
 
-# Code for testing
-checks_count = 0
-check_folder = "123"  # checks directory
-checks_list = os.listdir(check_folder)
-logging.info(f"Checks folder: {check_folder}")
+    for file in checks_list:
+        path = os.path.join(check_folder, file)
+        logging.info(f"File path: {path}")
+        if os.path.isfile(path):
+            print(Style.BRIGHT + Back.WHITE + Fore.BLUE + "**********************************************")
+            print("Current check:", path)
+            CheckParser(path).get_result()
+            print(Style.BRIGHT + Back.WHITE + Fore.BLUE + "**********************************************")
+            print("")
+            checks_count += 1
 
-for file in checks_list:
-    path = os.path.join(check_folder, file)
-    logging.info(f"File path: {path}")
-    if os.path.isfile(path):
-        print(Style.BRIGHT + Back.WHITE + Fore.BLUE + "**********************************************")
-        print("Current check:", path)
-        CheckParser(path).get_result()
-        print(Style.BRIGHT + Back.WHITE + Fore.BLUE + "**********************************************")
-        print("")
-        checks_count += 1
-
-logging.info(f"Count of checks: {checks_count}")
-print(Style.BRIGHT + Back.GREEN + Fore.WHITE + f"Count of checks: {checks_count}")
+    logging.info(f"Count of checks: {checks_count}")
+    print(Style.BRIGHT + Back.GREEN + Fore.WHITE + f"Count of checks: {checks_count}")
